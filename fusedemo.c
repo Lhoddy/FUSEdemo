@@ -598,8 +598,7 @@ static int dhmp_fs_read(const char *path, char *buf, size_t size, off_t offset,
 	int i = read_offset / CHUNK_SIZE;
 	while(i > 0)
 	{
-		if(cnt == NULL) return 0;
-		if(cnt -> size  != CHUNK_SIZE) return 0;
+		if(cnt == NULL || cnt -> size  != CHUNK_SIZE){ DEBUG("dhmp_fs_read error");return 0;}
 		cnt = cnt->next;
 		i--;
 	}
@@ -607,7 +606,7 @@ static int dhmp_fs_read(const char *path, char *buf, size_t size, off_t offset,
 	size_t read_size = 0,un_read_size = size;
 	while(un_read_size > 0)
 	{
-		if(cnt == NULL) break;;
+		if(cnt == NULL) {DEBUG("dhmp_fs_read eror");break;}
 		if(un_read_size >= cnt->size - read_offset){
 			dhmp_fs_read_from_bank( cnt->chunk_index, bbuf + read_size, (cnt->size - read_offset), read_offset);
 			read_size += cnt->size - read_offset;
@@ -655,7 +654,7 @@ static int dhmp_fs_write(const char *path, const char *buf, size_t size,
 		if(cnt == NULL) return 0;
 		if(cnt -> size  != CHUNK_SIZE) return 0;
 		i--;
-		if(i == 0 && write_offset == 0)
+		if(i == 0 && write_offset == 0 && cnt->next == NULL)
 		{
 			cnt->next = malloc(sizeof(struct context));
 			cnt->next->size = 0;
@@ -665,7 +664,6 @@ static int dhmp_fs_write(const char *path, const char *buf, size_t size,
 		cnt = cnt->next;
 	}
 	
-
 	size_t write_size = 0,un_write_size = size;
 	while(un_write_size > 0)
 	{
@@ -673,7 +671,8 @@ static int dhmp_fs_write(const char *path, const char *buf, size_t size,
 			dhmp_fs_write_to_bank(cnt->chunk_index, buf + write_size, (CHUNK_SIZE - write_offset), write_offset);
 			write_size += (CHUNK_SIZE - write_offset);
 			un_write_size = un_write_size - (CHUNK_SIZE - write_offset);
-			head->size += (CHUNK_SIZE - write_offset);
+			//head->size += (CHUNK_SIZE - write_offset);
+			head->size = head->size - cnt->size + CHUNK_SIZE;
 			write_offset = 0;
 			cnt->size = CHUNK_SIZE;
 			if(cnt->next == NULL && un_write_size > 0)
@@ -688,8 +687,12 @@ static int dhmp_fs_write(const char *path, const char *buf, size_t size,
 		{
 			dhmp_fs_write_to_bank(cnt->chunk_index, buf + write_size , un_write_size, write_offset);
 			write_size += un_write_size;
-			cnt->size += un_write_size;
-			head->size += cnt->size;
+			if(cnt->size != CHUNK_SIZE)
+			{
+				head->size = head->size - cnt->size;
+				cnt->size = un_write_size + write_offset;
+				head->size += cnt->size;
+			}
 			un_write_size = 0;
 		}
 		cnt = cnt->next;
