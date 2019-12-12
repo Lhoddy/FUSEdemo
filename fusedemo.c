@@ -30,14 +30,10 @@
 #include <sys/xattr.h>
 #endif
 
-//#define DHMP_ON
 
-#ifdef DHMP_ON
- #include "dhmp.h"
-#endif
 
-#define TOTOL_SIZE ((uint64_t)1024*1024*1024*2)
-#define BANK_SIZE (1024*1024*4)
+#define TOTOL_SIZE ((uint64_t)1024*1024*1024*2)   // totol size of fsdemo
+#define BANK_SIZE (1024*1024*4)					
 #define BANK_NUM (TOTOL_SIZE/BANK_SIZE)
 #define CHUNK_SIZE (1024*16)
 #define CHUNK_NUM (TOTOL_SIZE/CHUNK_SIZE)
@@ -85,7 +81,10 @@ struct inode *root;
 FILE * fp;
 char msg[1024];
 char msg_tmp[1024];
+
+//#define DEBUG_ON
 #ifdef DEBUG_ON
+	#define DEBUG_FILE "/fuse_result"
 	#define DEBUG(x) {sprintf(msg," %s ",x); fwrite(msg, strlen(msg), 1, fp);	fflush(fp);}
 	#define DEBUG_INT(x) {sprintf(msg_tmp," %d\t",(int)x);DEBUG(msg_tmp);}
 	#define DEBUG_END() {sprintf(msg,"\n"); fwrite(msg, strlen(msg), 1, fp);	fflush(fp);}
@@ -107,9 +106,9 @@ int getFreeChunk()
 		break;
 	}
 	if(i == CHUNK_NUM)
-		DEBUG("Error:no space for free chunk");
+	DEBUG("Error:no space for free chunk");
 	bitmap[i] = 1;
-DEBUG("getFreeChunk = ");
+	DEBUG("getFreeChunk = ");
 	DEBUG_INT(i);
 	DEBUG_END();
 	return i;
@@ -130,21 +129,18 @@ void dhmp_fs_read_from_bank( int chunk_index, char * buf, size_t size, off_t chu
 	DEBUG("chunkoffset=");
 	DEBUG_INT(offset);
 	DEBUG_INT(times);
-#ifdef DHMP_ON
-	dhmp_read(tbank, dhmp_local_buf, BANK_SIZE);
-#else
+
 	size_t Tsize = chunk_offset + size + times * CHUNK_SIZE;
 	memcpy(dhmp_local_buf, tbank, Tsize);
-#endif
+
 	memcpy(buf, dhmp_local_buf + offset, size);
-	DEBUG(" Leave dhmp_fs_read_from_bank \n");
 }
 
 void dhmp_fs_write_to_bank(int chunk_index, char * buf, size_t size, off_t chunk_offset)
 {
 	DEBUG("dhmp_fs_write_to_bank size =");
 	DEBUG_INT(size);
-DEBUG("chunk_offset=");
+	DEBUG("chunk_offset=");
 	DEBUG_INT(chunk_offset);
 
 	void * tbank = (bank[chunk_index / (CHUNK_NUM/BANK_NUM)]);
@@ -152,36 +148,21 @@ DEBUG("chunk_offset=");
 	off_t offset = chunk_offset + times * CHUNK_SIZE;
 	DEBUG("chunk = =");
 	DEBUG_INT(chunk_index );
-DEBUG("chunkoffset=");
-DEBUG_INT(offset);
+	DEBUG("chunkoffset=");
+	DEBUG_INT(offset);
 	DEBUG_INT(times);
-#ifdef DHMP_ON
-	dhmp_read(tbank, dhmp_local_buf, BANK_SIZE); DEBUG("write 1\t");
-	memcpy(dhmp_local_buf + offset, buf,size);   DEBUG("write 2\t");
-	dhmp_write(tbank, dhmp_local_buf, BANK_SIZE); DEBUG("rwite 3\t");
-#else
+
 	size_t Tsize = chunk_offset + size + times * CHUNK_SIZE;
 	memcpy(dhmp_local_buf, tbank, offset);
 	memcpy(dhmp_local_buf + offset, buf, size);
 	memcpy(tbank, dhmp_local_buf, Tsize);
-#endif
-	DEBUG(" Leave dhmp_fs_write_to_bank \n");
 }
 
 static int dhmp_init(struct fuse_conn_info *conn, struct fuse_config *cfg)
 {
-        int init_bank_i ;
-#ifdef DHMP_ON
-                dhmp_client_init();
-                for(init_bank_i = 0;init_bank_i < BANK_NUM;init_bank_i++)
-                {
-
-                        bank[init_bank_i] = dhmp_malloc(BANK_SIZE);
-                }
-        #else
-                for(init_bank_i = 0;init_bank_i < BANK_NUM;init_bank_i++)
-                        bank[init_bank_i] = malloc(BANK_SIZE);
-        #endif	
+    int init_bank_i ;
+    for(init_bank_i = 0;init_bank_i < BANK_NUM;init_bank_i++)
+            bank[init_bank_i] = malloc(BANK_SIZE);	
 	root = (struct inode*) malloc(sizeof(struct inode));
 	root -> bro = NULL;
 	root -> son = NULL;
@@ -201,10 +182,10 @@ static int dhmp_fs_access(const char *path, int mask)
 
 
 
-/* deal path to dir/file mode
- * 	/root/lhd/node  to /root/lhd/ node
- * 		/root/lhd/node/ to /root/lhd/ node
- * 			do not deal root dir : /
+/* brief: deal path to dir/file mode
+ * transfaring	(/root/lhd/node)  to (/root/lhd/ node)
+ * transfaring 	(/root/lhd/node/) to (/root/lhd/ node)
+ * do not do anything with root(/) dir 
  * 			*/
 void deal(const char *path,char * dirname,char * filename)
 {
@@ -224,7 +205,6 @@ void deal(const char *path,char * dirname,char * filename)
 	dirname[m+1] = 0;
 	if(filename[k-1] == '/') k--;
 	filename[k] = 0;
-/*	printf("deal %s %s %s\n",path,dirname,filename);*/
 }
 
 struct inode * get_father_inode(char *dirname)
@@ -312,9 +292,9 @@ int dhmpMknod(const char * path)
 	strcpy(now->filename,filename);
 	struct inode * tmp = father->son;
 	DEBUG("Mknod");
-        DEBUG(father->filename);
-        DEBUG(now->filename);
-        DEBUG_END();
+    DEBUG(father->filename);
+    DEBUG(now->filename);
+    DEBUG_END();
 	father -> son = now;
 	now -> bro = tmp;
 	return 1;
@@ -323,16 +303,12 @@ int dhmpMknod(const char * path)
 
 int dhmpCreateDirectory(const char * path)
 {
-DEBUG("dhmpCreateDirectory");
-	DEBUG(path);
-	DEBUG_END();
-
 	if(strlen(path) == 1) return 0;
 	char filename[FILE_NAME_LEN],dirname[FILE_NAME_LEN];
 	deal(path,dirname,filename);
 
 	struct inode * now = malloc(sizeof(struct inode));;
-	now -> isDirectories = 1;  //////////////////////////////////
+	now -> isDirectories = 1;  
 	now -> son = NULL;
 	now -> size = 0;
 	now -> timeLastModified = time(NULL);
@@ -342,10 +318,6 @@ DEBUG("dhmpCreateDirectory");
 	if(father == NULL) return -1;
 	if(father->isDirectories == 0) return -1;
 	struct inode * tmp = father->son;
-	DEBUG("Mkdir");
-        DEBUG(father->filename);
-        DEBUG(now->filename);
-        DEBUG_END();
 	father -> son = now;
 	now -> bro = tmp;
 	return 1;
@@ -389,7 +361,7 @@ int dhmpReadDir(const char *path,struct inode_list *Li)
 		Li->next = NULL;
 		head = head->bro;
 	}
-list = Li;
+	list = Li;
 	while(head != NULL)
 	{
 		list->next = malloc(sizeof(struct inode_list));
@@ -405,9 +377,6 @@ list = Li;
 void dhmpFreeInode(struct inode * head)
 {
 	if(head == NULL) return ;
-	DEBUG("dhmpFreeInode");
-	DEBUG(head->filename);
-	DEBUG_END();
 	struct context * context = head->context, *tmp;
 	while(context != NULL)
 	{
@@ -425,9 +394,6 @@ void dhmpFreeInode(struct inode * head)
 void dhmpDeleteALL(struct inode *head)
 {
 	if(head == NULL) return;
-	DEBUG("dhmpDeleteALL");
-	DEBUG(head->filename);
-	DEBUG_END();
 	if(head->bro != NULL)
 	{
 		dhmpDeleteALL(head->bro);
@@ -441,10 +407,6 @@ void dhmpDeleteALL(struct inode *head)
 
 int dhmpDelFromInode(struct inode *head,char * filename)
 {
-	DEBUG("dhmpDelFromInode");
-	DEBUG(head->filename);
-	DEBUG(filename);
-	DEBUG_END();
 	struct inode * tmp ,*ttmp;
 	tmp = head -> son;
 	if(tmp == NULL) return 0;
@@ -544,9 +506,6 @@ static int dhmp_fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 static int dhmp_fs_mknod(const char *path, mode_t mode, dev_t rdev)
 {
-	DEBUG("dhmp_fs_mknod")
-	DEBUG(path);
-	DEBUG_END();
 	int res;
 	res = dhmpMknod(path);
 	if(res < 0)
@@ -564,9 +523,6 @@ static int dhmp_fs_mkdir(const char *path, mode_t mode)
 }
 static int dhmp_fs_rmdir(const char *path)
 {
-DEBUG("dhmp_fs_rmdir");
-DEBUG(path);
-DEBUG_END();
 	int res = dhmpDelete(path);
 	if(res < 0)
 		return -2;
@@ -577,9 +533,6 @@ DEBUG_END();
 
 static int dhmp_fs_unlink(const char *path)
 {
-DEBUG("dhmp_fs_unlink");
-DEBUG(path);
-DEBUG_END();
 	int res = dhmpDelete(path);
 	if(res < 0)
 		return -2;
@@ -590,7 +543,6 @@ DEBUG_END();
 
 static int dhmp_fs_rename(const char *from, const char *to, unsigned int flags)
 {
-	DEBUG("dhmp_fs_rename");
 	char filename[FILE_NAME_LEN],dirname[FILE_NAME_LEN],toname[FILE_NAME_LEN];
 	int len = strlen(from);
 	strcpy(filename,from);
@@ -632,11 +584,6 @@ static int dhmp_fs_open(const char *path, struct fuse_file_info *fi)
 static int dhmp_fs_read(const char *path, char *buf, size_t size, off_t offset,
 		    struct fuse_file_info *fi)
 {
-
-	DEBUG("dhmp_fs_read");
-	DEBUG(path);
-	DEBUG_INT(size);
-	DEBUG_END();
 	char *bbuf = malloc(size);
 	char filename[FILE_NAME_LEN];
 	int len = strlen(path);
@@ -644,14 +591,9 @@ static int dhmp_fs_read(const char *path, char *buf, size_t size, off_t offset,
 	filename[len] = '/'; filename[len+1] = 0;
 	struct inode* head = get_father_inode(filename);
 	if(head == NULL || head->isDirectories == 1) return -1;
-	DEBUG("dhmp_fs_write stage 0\n");
-	DEBUG(head->filename);
-	DEBUG_INT(head->size);
-	DEBUG_END();
 
 	struct context * cnt = head->context;
 	if(cnt == NULL) return 0;
-	DEBUG("dhmp_fs_read stage 1\n");
 	off_t read_offset = offset;
 	int i = read_offset / CHUNK_SIZE;
 	while(i > 0)
@@ -683,19 +625,12 @@ static int dhmp_fs_read(const char *path, char *buf, size_t size, off_t offset,
 	bbuf[read_size] = 0;
 	memcpy(buf,bbuf,read_size);
 	free(bbuf);
-	DEBUG("dhmp_fs_read stage 3\n");
 	return read_size;
 }
 
 static int dhmp_fs_write(const char *path, const char *buf, size_t size,
 		     off_t offset, struct fuse_file_info *fi)
 {
-
-	DEBUG("dhmp_fs_write");
-	DEBUG(path);
-	DEBUG_INT(size);
-	DEBUG_INT(offset);
-	DEBUG_END();
 	int res;
 	char filename[FILE_NAME_LEN];
 	int len = strlen(path);
@@ -703,10 +638,6 @@ static int dhmp_fs_write(const char *path, const char *buf, size_t size,
 	filename[len] = '/'; filename[len+1] = 0;
 	struct inode* head = get_father_inode(filename);
 	if(head == NULL || head->isDirectories == 1) return -1;
-	DEBUG("dhmp_fs_write stage 0\n");
-	DEBUG(head->filename);
-	DEBUG_INT(head->size);
-	DEBUG_END();
 	struct context * cnt = head->context;
 	if(cnt == NULL)
 	{
@@ -763,7 +694,6 @@ static int dhmp_fs_write(const char *path, const char *buf, size_t size,
 		}
 		cnt = cnt->next;
 	}
-	DEBUG("dhmp_fs_write stage 3\n");
 	return size;
 }
 
@@ -795,16 +725,12 @@ static struct fuse_operations dhmp_fs_oper = {
 
 int main(int argc, char *argv[])
 {
-dhmp_local_buf = malloc(BANK_SIZE+1);
-	fp = fopen("/home/lhd/DHMP/fuse_result", "ab+");
-	printf("main\n");
+	dhmp_local_buf = malloc(BANK_SIZE+1);
+	#ifdef DEBUG_ON
+		fp = fopen(DEBUG_FILE, "ab+");
+	#endif
 	int ret = fuse_main(argc, argv, &dhmp_fs_oper, NULL);
-/*	#ifdef DHMP_ON
- *			for(init_bank_i = 0;init_bank_i < BANK_NUM;init_bank_i++)
- *						dhmp_free(bank[init_bank_i]);
- *								dhmp_client_destroy();
- *									#endif
- *									*/	return ret;
+	return ret;
 }
 
 
