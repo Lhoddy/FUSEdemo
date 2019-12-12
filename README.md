@@ -4,25 +4,25 @@
 1.为了编译它：
 1.1在cmake里添加如下fuse调用:
 
-``find_package(PkgConfig)
-if (PKG_CONFIG_FOUND)
-  pkg_check_modules(GTK "fuse3")
-  if (GTK_FOUND)
-    target_link_libraries(client ${GTK_LIBRARIES})
-    add_definitions(${GTK_CFLAGS} ${GTK_CFLAGS_OTHER})
-  endif()
-endif()``
+``find_package(PkgConfig)``
+``if (PKG_CONFIG_FOUND)``
+``  pkg_check_modules(GTK "fuse3")``
+``  if (GTK_FOUND)``
+``    target_link_libraries(client ${GTK_LIBRARIES})``
+``    add_definitions(${GTK_CFLAGS} ${GTK_CFLAGS_OTHER})``
+``  endif()``
+``endif()``
 
 1.2或者将fuse加入pkg环境变量后用gcc编译：(填入你自己的fuse3.pc地址)
 
-``export PKG_CONFIG_PATH=/home/fuse/libfuse/fuse3.pc:$PKG_CONFIG_PATH
-ldconfig
-gcc fusedemo.c -o fusedemo  `pkg-config fuse3 --cflags --libs` ``
+``export PKG_CONFIG_PATH=/home/fuse/libfuse/fuse3.pc:$PKG_CONFIG_PATH``
+``ldconfig``
+``gcc fusedemo.c -o fusedemo  `pkg-config fuse3 --cflags --libs` ``
 
 2.为了运行(挂载)它：
 
-``mkdir yourdir
-./fusedemo ./yourdir``
+``mkdir yourdir``
+``./fusedemo ./yourdir``
 
 3.查看是否挂载成功
 
